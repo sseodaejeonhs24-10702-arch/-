@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teachable Machine AI 모델 정확도 테스트</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- TensorFlow.js & Teachable Machine Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen pb-12">
+
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 py-6 px-4 mb-8 shadow-lg">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="p-3 bg-indigo-600 rounded-xl shadow-md">
+          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-tight">티처블 머신 AI 정확도 테스트</h1>
+          <p class="text-sm text-slate-400">자신의 Teachable Machine 모델 URL을 넣고 분류 성능을 검증하세요.</p>
+        </div>
+      </div>
+      <div id="model-status" class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-700 text-slate-300 border border-slate-600">
+        <span class="w-2.5 h-2.5 rounded-full bg-slate-400 mr-2"></span> 모델 대기 중
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-6xl mx-auto px-4">
+    <!-- Model URL Input Box -->
+    <section class="bg-slate-800 rounded-2xl p-6 mb-8 border border-slate-700 shadow-md">
+      <label for="model-url-input" class="block text-sm font-medium text-slate-300 mb-2">
+        티처블 머신 모델 URL (공유 링크)
+      </label>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input 
+          type="text" 
+          id="model-url-input" 
+          placeholder="예: https://teachablemachine.withgoogle.com/models/abc123XYZ/" 
+          class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+        />
+        <button 
+          id="load-model-btn" 
+          onclick="loadModel()" 
+          class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-6 py-3 rounded-xl shadow-md transition duration-200 flex items-center justify-center gap-2"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+          </svg>
+          모델 로드하기
+        </button>
+      </div>
+      <p class="text-xs text-slate-400 mt-2">
+        💡 티처블 머신에서 <span class="text-indigo-400 font-medium">Model Export > Upload (shareable link)</span> 완료 후 생성된 링크를 붙여넣으세요.
+      </p>
+    </section>
+
+    <!-- Testing Dashboard Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      
+      <!-- Left Panel: Input Source (Webcam or Image File) -->
+      <section class="lg:col-span-6 bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-md flex flex-col">
+        <!-- Mode Switcher Tabs -->
+        <div class="flex border-b border-slate-700 mb-6">
+          <button 
+            id="tab-webcam" 
+            onclick="switchTab('webcam')" 
+            class="flex-1 py-3 text-center text-sm font-medium border-b-2 border-indigo-500 text-indigo-400 transition"
+          >
+            📷 실시간 웹캠 테스트
+          </button>
+          <button 
+            id="tab-image" 
+            onclick="switchTab('image')" 
+            class="flex-1 py-3 text-center text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition"
+          >
+            🖼️ 이미지 파일 업로드
+          </button>
+        </div>
+
+        <!-- Tab Content: Webcam -->
+        <div id="view-webcam" class="flex-1 flex flex-col items-center justify-center min-h-[340px]">
+          <div id="webcam-container" class="relative w-full max-w-[340px] aspect-square bg-slate-900 rounded-xl overflow-hidden border-2 border-dashed border-slate-700 flex items-center justify-center">
+            <div id="webcam-placeholder" class="text-center p-6 text-slate-500">
+              <svg class="w-12 h-12 mx-auto mb-2 stroke-slate-600" fill="none" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+              </svg>
+              <p class="text-sm">모델 로드 후 아래 버튼을 눌러 카메라를 켜세요.</p>
+            </div>
+          </div>
+          <div class="mt-5 w-full flex gap-3 justify-center">
+            <button 
+              id="toggle-webcam-btn" 
+              onclick="toggleWebcam()" 
+              disabled 
+              class="w-full max-w-[340px] bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-md flex items-center justify-center gap-2"
+            >
+              카메라 시작하기
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab Content: Image Upload -->
+        <div id="view-image" class="hidden flex-1 flex-col items-center justify-center min-h-[340px]">
+          <div 
+            id="drop-zone" 
+            onclick="document.getElementById('image-input').click()"
+            class="w-full max-w-[340px] aspect-square bg-slate-900 rounded-xl border-2 border-dashed border-slate-700 hover:border-indigo-500 transition cursor-pointer flex flex-col items-center justify-center p-4 text-center group"
+          >
+            <input type="file" id="image-input" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+            <img id="uploaded-image-preview" class="hidden w-full h-full object-contain rounded-lg" alt="Upload Preview">
+            <div id="upload-placeholder" class="group-hover:scale-105 transition duration-200">
+              <svg class="w-12 h-12 mx-auto mb-2 text-slate-500 group-hover:text-indigo-400 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+              <p class="text-sm font-medium text-slate-300">이미지 클릭 또는 드래그 앤 드롭</p>
+              <p class="text-xs text-slate-500 mt-1">PNG, JPG, WEBP 지원</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Prediction Results & Accuracy Bars -->
+      <section class="lg:col-span-6 bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-md flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-700">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <span>🎯</span> 실시간 예측 결과
+            </h2>
+            <span id="inference-speed" class="text-xs text-slate-400 font-mono">Speed: -- ms</span>
+          </div>
+
+          <!-- Top Highlighted Winner Box -->
+          <div id="top-prediction-card" class="bg-slate-900 border border-slate-700 rounded-xl p-4 mb-6 text-center">
+            <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider block mb-1">가장 높은 확률 (Top Class)</span>
+            <div id="top-class-name" class="text-2xl font-extrabold text-slate-400">결과 대기 중</div>
+            <div id="top-class-probability" class="text-lg font-bold text-indigo-400 mt-1">0.0%</div>
+          </div>
+
+          <!-- Predictions List -->
+          <div class="space-y-4 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar" id="label-container">
+            <div class="text-center py-8 text-slate-500 text-sm">
+              모델을 성공적으로 로드하면 여기에 클래스별 정확도가 표시됩니다.
+            </div>
+          </div>
+        </div>
+
+        <!-- Capture / Log Result Button -->
+        <div class="pt-6 border-t border-slate-700 mt-6">
+          <button 
+            id="log-result-btn" 
+            onclick="logCurrentResult()" 
+            disabled 
+            class="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 font-semibold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 border border-slate-600"
+          >
+            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+            </svg>
+            현재 결과 기록 스냅샷 저장
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Test History Log Section -->
+    <section class="mt-8 bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-md">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>📋</span> 테스트 기록 로그
+        </h3>
+        <button onclick="clearLogs()" class="text-xs text-rose-400 hover:text-rose-300 font-medium">로그 비우기</button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-300">
+          <thead class="bg-slate-900 text-xs uppercase text-slate-400 border-b border-slate-700">
+            <tr>
+              <th class="py-3 px-4">시간</th>
+              <th class="py-3 px-4">모드</th>
+              <th class="py-3 px-4">최고 예측 클래스</th>
+              <th class="py-3 px-4">신뢰도 (정확도)</th>
+              <th class="py-3 px-4">상태 평가</th>
+            </tr>
+          </thead>
+          <tbody id="log-table-body" class="divide-y divide-slate-700">
+            <tr id="empty-log-row">
+              <td colspan="5" class="py-6 text-center text-slate-500">
+                아직 기록된 테스트 스냅샷이 없습니다. "현재 결과 기록 스냅샷 저장" 버튼을 눌러보세요.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Global State Variables
+    let model = null;
+    let webcam = null;
+    let isWebcamRunning = false;
+    let maxPredictions = 0;
+    let currentMode = 'webcam'; // 'webcam' or 'image'
+    let currentPredictions = [];
+    let animationFrameId = null;
+
+    // UI Element References
+    const modelUrlInput = document.getElementById('model-url-input');
+    const loadModelBtn = document.getElementById('load-model-btn');
+    const modelStatus = document.getElementById('model-status');
+    const labelContainer = document.getElementById('label-container');
+    const toggleWebcamBtn = document.getElementById('toggle-webcam-btn');
+    const logResultBtn = document.getElementById('log-result-btn');
+    const topClassName = document.getElementById('top-class-name');
+    const topClassProbability = document.getElementById('top-class-probability');
+    const inferenceSpeed = document.getElementById('inference-speed');
+
+    // Tab Switching Logic
+    function switchTab(mode) {
+      currentMode = mode;
+      const tabWebcam = document.getElementById('tab-webcam');
+      const tabImage = document.getElementById('tab-image');
+      const viewWebcam = document.getElementById('view-webcam');
+      const viewImage = document.getElementById('view-image');
+
+      if (mode === 'webcam') {
+        tabWebcam.className = "flex-1 py-3 text-center text-sm font-medium border-b-2 border-indigo-500 text-indigo-400 transition";
+        tabImage.className = "flex-1 py-3 text-center text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition";
+        viewWebcam.classList.remove('hidden');
+        viewWebcam.classList.add('flex');
+        viewImage.classList.add('hidden');
+        viewImage.classList.remove('flex');
+      } else {
+        tabImage.className = "flex-1 py-3 text-center text-sm font-medium border-b-2 border-indigo-500 text-indigo-400 transition";
+        tabWebcam.className = "flex-1 py-3 text-center text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition";
+        viewImage.classList.remove('hidden');
+        viewImage.classList.add('flex');
+        viewWebcam.classList.add('hidden');
+        viewWebcam.classList.remove('flex');
+        
+        // Pause webcam loop if active
+        if (isWebcamRunning) {
+          stopWebcam();
+        }
+      }
+    }
+
+    // Load Teachable Machine Model
+    async function loadModel() {
+      let urlInput = modelUrlInput.value.trim();
+      if (!urlInput) {
+        alert('티처블 머신 모델 URL을 입력해 주세요.');
+        return;
+      }
+
+      // Ensure trailing slash
+      if (!urlInput.endsWith('/')) {
+        urlInput += '/';
+      }
+
+      const modelURL = urlInput + "model.json";
+      const metadataURL = urlInput + "metadata.json";
+
+      // Update UI Status
+      loadModelBtn.disabled = true;
+      loadModelBtn.innerText = "모델 로드 중...";
+      modelStatus.className = "inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+      modelStatus.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-400 mr-2 animate-pulse"></span> 모델 로딩 중...`;
+
+      try {
+        model = await tmImage.load(modelURL, metadataURL);
+        maxPredictions = model.getTotalClasses();
+
+        // Model Loaded Successfully
+        modelStatus.className = "inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+        modelStatus.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400 mr-2"></span> 모델 준비 완료 (${maxPredictions}개 클래스)`;
+
+        toggleWebcamBtn.disabled = false;
+        logResultBtn.disabled = false;
+        loadModelBtn.disabled = false;
+        loadModelBtn.innerHTML = `
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+          로드 완료
+        `;
+
+        // Create UI elements for classes
+        setupLabelContainer();
+
+      } catch (error) {
+        console.error("Model load error:", error);
+        alert("모델을 불러오지 못했습니다. URL이 올바른지 및 CORS 공유 설정이 되어 있는지 확인해 주세요.");
+        modelStatus.className = "inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30";
+        modelStatus.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-400 mr-2"></span> 로드 실패`;
+        loadModelBtn.disabled = false;
+        loadModelBtn.innerText = "다시 시도";
+      }
+    }
+
+    // Setup UI containers for prediction bars
+    function setupLabelContainer() {
+      labelContainer.innerHTML = '';
+      for (let i = 0; i < maxPredictions; i++) {
+        const itemBox = document.createElement('div');
+        itemBox.className = "space-y-1";
+
+        const titleRow = document.createElement('div');
+        titleRow.className = "flex justify-between text-sm font-medium text-slate-300";
+        
+        const classNameSpan = document.createElement('span');
+        classNameSpan.id = `class-label-${i}`;
+        classNameSpan.innerText = `Class ${i + 1}`;
+
+        const probSpan = document.createElement('span');
+        probSpan.id = `class-prob-${i}`;
+        probSpan.className = "font-mono font-bold text-slate-400";
+        probSpan.innerText = "0.0%";
+
+        titleRow.appendChild(classNameSpan);
+        titleRow.appendChild(probSpan);
+
+        const progressBg = document.createElement('div');
+        progressBg.className = "w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-700/60";
+
+        const progressBar = document.createElement('div');
+        progressBar.id = `class-bar-${i}`;
+        progressBar.className = "bg-indigo-500 h-full rounded-full transition-all duration-150 ease-out w-0";
+
+        progressBg.appendChild(progressBar);
+        itemBox.appendChild(titleRow);
+        itemBox.appendChild(progressBg);
+
+        labelContainer.appendChild(itemBox);
+      }
+    }
+
+    // Toggle Webcam Start / Stop
+    async function toggleWebcam() {
+      if (!isWebcamRunning) {
+        await startWebcam();
+      } else {
+        stopWebcam();
+      }
+    }
+
+    async function startWebcam() {
+      if (!model) return;
+
+      const flip = true; 
+      webcam = new tmImage.Webcam(340, 340, flip);
+      
+      try {
+        await webcam.setup();
+        await webcam.play();
+        
+        const webcamContainer = document.getElementById('webcam-container');
+        webcamContainer.innerHTML = '';
+        webcamContainer.appendChild(webcam.canvas);
+
+        isWebcamRunning = true;
+        toggleWebcamBtn.innerText = "카메라 중지하기";
+        toggleWebcamBtn.className = "w-full max-w-[340px] bg-rose-600 hover:bg-rose-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-md flex items-center justify-center gap-2";
+
+        webcamLoop();
+      } catch (e) {
+        console.error("Webcam access error:", e);
+        alert("웹캠에 접근할 수 없습니다. 권한 승인 상태를 확인하세요.");
+      }
+    }
+
+    function stopWebcam() {
+      if (webcam) {
+        webcam.stop();
+      }
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      isWebcamRunning = false;
+
+      const webcamContainer = document.getElementById('webcam-container');
+      webcamContainer.innerHTML = `
+        <div id="webcam-placeholder" class="text-center p-6 text-slate-500">
+          <svg class="w-12 h-12 mx-auto mb-2 stroke-slate-600" fill="none" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+          </svg>
+          <p class="text-sm">카메라가 중지되었습니다.</p>
+        </div>
+      `;
+
+      toggleWebcamBtn.innerText = "카메라 다시 시작";
+      toggleWebcamBtn.className = "w-full max-w-[340px] bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-md flex items-center justify-center gap-2";
+    }
+
+    async function webcamLoop() {
+      if (isWebcamRunning) {
+        webcam.update();
+        await predict(webcam.canvas);
+        animationFrameId = requestAnimationFrame(webcamLoop);
+      }
+    }
+
+    // Predict Function for both Webcam & Uploaded Image
+    async function predict(imageElement) {
+      if (!model) return;
+
+      const startTime = performance.now();
+      const prediction = await model.predict(imageElement);
+      const endTime = performance.now();
+
+      inferenceSpeed.innerText = `Speed: ${(endTime - startTime).toFixed(1)} ms`;
+      currentPredictions = prediction;
+
+      let highestProb = -1;
+      let highestIndex = 0;
+
+      for (let i = 0; i < maxPredictions; i++) {
+        const className = prediction[i].className;
+        const probability = prediction[i].probability;
+        const probPercentage = (probability * 100).toFixed(1);
+
+        if (probability > highestProb) {
+          highestProb = probability;
+          highestIndex = i;
+        }
+
+        const labelElem = document.getElementById(`class-label-${i}`);
+        const probElem = document.getElementById(`class-prob-${i}`);
+        const barElem = document.getElementById(`class-bar-${i}`);
+
+        if (labelElem && probElem && barElem) {
+          labelElem.innerText = className;
+          probElem.innerText = `${probPercentage}%`;
+          barElem.style.width = `${probPercentage}%`;
+
+          // Color coding according to confidence level
+          if (probability > 0.8) {
+            barElem.className = "bg-emerald-500 h-full rounded-full transition-all duration-150 ease-out";
+          } else if (probability > 0.4) {
+            barElem.className = "bg-amber-500 h-full rounded-full transition-all duration-150 ease-out";
+          } else {
+            barElem.className = "bg-slate-600 h-full rounded-full transition-all duration-150 ease-out";
+          }
+        }
+      }
+
+      // Update Top Highlighted Card
+      const topClass = prediction[highestIndex];
+      topClassName.innerText = topClass.className;
+      topClassProbability.innerText = `${(topClass.probability * 100).toFixed(1)}%`;
+      
+      const topProb = topClass.probability;
+      if (topProb >= 0.8) {
+        topClassProbability.className = "text-xl font-bold text-emerald-400 mt-1";
+      } else if (topProb >= 0.5) {
+        topClassProbability.className = "text-xl font-bold text-amber-400 mt-1";
+      } else {
+        topClassProbability.className = "text-xl font-bold text-rose-400 mt-1";
+      }
+    }
+
+    // Handle Custom Image File Upload
+    async function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const previewImg = document.getElementById('uploaded-image-preview');
+        const placeholder = document.getElementById('upload-placeholder');
+
+        previewImg.src = e.target.result;
+        previewImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+
+        previewImg.onload = async () => {
+          if (model) {
+            await predict(previewImg);
+          } else {
+            alert('먼저 상단에서 모델 URL을 입력하고 [모델 로드하기]를 진행해 주세요.');
+          }
+        };
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Logging Test Snapshots to Table
+    function logCurrentResult() {
+      if (!currentPredictions.length) return;
+
+      // Find top prediction
+      let topPred = currentPredictions.reduce((max, p) => p.probability > max.probability ? p : max, currentPredictions[0]);
+      
+      const tbody = document.getElementById('log-table-body');
+      const emptyRow = document.getElementById('empty-log-row');
+      if (emptyRow) {
+        emptyRow.remove();
+      }
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString();
+      const confidence = (topPred.probability * 100).toFixed(1);
+
+      let statusBadge = '';
+      if (topPred.probability >= 0.8) {
+        statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">신뢰도 높음 (High)</span>`;
+      } else if (topPred.probability >= 0.5) {
+        statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">보통 (Moderate)</span>`;
+      } else {
+        statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/30">낮음/불확실 (Low)</span>`;
+      }
+
+      const modeLabel = currentMode === 'webcam' ? '🎥 실시간 웹캠' : '🖼️ 이미지 파일';
+
+      const tr = document.createElement('tr');
+      tr.className = "hover:bg-slate-700/50 transition";
+      tr.innerHTML = `
+        <td class="py-3 px-4 font-mono text-xs text-slate-400">${timeStr}</td>
+        <td class="py-3 px-4 font-medium text-slate-300">${modeLabel}</td>
+        <td class="py-3 px-4 font-bold text-white">${topPred.className}</td>
+        <td class="py-3 px-4 font-mono font-bold text-indigo-400">${confidence}%</td>
+        <td class="py-3 px-4">${statusBadge}</td>
+      `;
+
+      tbody.prepend(tr);
+    }
+
+    function clearLogs() {
+      const tbody = document.getElementById('log-table-body');
+      tbody.innerHTML = `
+        <tr id="empty-log-row">
+          <td colspan="5" class="py-6 text-center text-slate-500">
+            아직 기록된 테스트 스냅샷이 없습니다. "현재 결과 기록 스냅샷 저장" 버튼을 눌러보세요.
+          </td>
+        </tr>
+      `;
+    }
+  </script>
+</body>
+</html>
